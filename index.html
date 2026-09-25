@@ -19,6 +19,17 @@
       font-size: 15px; font-weight: 700; letter-spacing: 1px; text-shadow: 0 1px 3px rgba(0,0,0,.6);
     }
     #hud span { color: #ffd166; }
+    #mapBtn {
+      background: #1b2440; border: 2px solid #ffd166; color: #ffd166; border-radius: 8px;
+      font-size: 16px; padding: 3px 8px; cursor: pointer; transition: .15s;
+    }
+    #mapBtn:active { transform: scale(.9); }
+    #mapHint {
+      position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+      background: rgba(6,12,28,.85); padding: 8px 16px; border-radius: 10px;
+      font-weight: 800; letter-spacing: 1px; font-size: 14px; color: #ffd166;
+      border: 2px solid #ffd166; box-shadow: 0 4px 14px rgba(0,0,0,.5); z-index: 5;
+    }
     #overlay {
       position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
       flex-direction: column; background: rgba(6,12,28,.9); border-radius: 12px; z-index: 10;
@@ -48,8 +59,13 @@
   <div id="game">
     <div id="hud">
       <div>Pipas: <span id="lives">3</span> · Pontos: <span id="score">0</span></div>
-      <div>🪙 <span id="coins">0</span> · Recorde: <span id="best">0</span></div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button id="mapBtn" onclick="cycleMap()">🗺️</button>
+        <div>🪙 <span id="coins">0</span></div>
+        <div>· <span id="best">0</span></div>
+      </div>
     </div>
+    <div id="mapHint" class="hidden">🗺️</div>
     <canvas id="cv" width="360" height="640"></canvas>
     <div id="overlay">
       <h1>🪁 Voa Pipa!</h1>
@@ -144,6 +160,13 @@
       kiteIdx = i; buildMenu();
     }
     function selectMap(i) { mapIdx = i; buildMenu(); }
+    // troca o mapa durante o jogo (botão 🗺️ ou tecla M)
+    function cycleMap() {
+      mapIdx = (mapIdx + 1) % MAPS.length;
+      const nm = MAPS[mapIdx];
+      const hint = document.getElementById('mapHint');
+      if (hint) { hint.textContent = '🗺️ ' + nm.name; hint.classList.remove('hidden'); clearTimeout(hint._t); hint._t = setTimeout(() => hint.classList.add('hidden'), 1200); }
+    }
     function buyKite(i) {
       const k = KITES[i];
       if (unlocked[i]) { selectKite(i); return; }
@@ -188,6 +211,8 @@
     const keys = {};
     addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; e.preventDefault(); });
     addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+    // tecla M troca o céu
+    addEventListener('keydown', e => { if (['m','ç'].includes(e.key.toLowerCase())) cycleMap(); });
 
     // touch para celular
     let touch = null;

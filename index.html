@@ -87,6 +87,7 @@
       { name: 'Tempestade', sky: ['#2b2d42','#4a4e69'], clouds:['#4a4a5a','#5a5a6a'], birds: 0.7, gust: 0.05,  cloudCol:'rgba(70,70,90,.9)', storm:true }
     ];
 
+    const GROUND = H*0.72; // altura do chão onde o menino/pipa encostam
     let mapIdx = 0, kiteIdx = 0;
     let best = (localStorage.getItem('pipaBest')|0);
     document.getElementById('best').textContent = best;
@@ -121,8 +122,26 @@
     // mão do menino (ponto de onde sai a linha) — deslocada conforme o boneco desenhado
     function handPos() { return { x: baseX + 7, y: baseY - 46 }; }
     const MAX_DIST = Math.hypot(W, H)*0.55;
-    let pickups = [], birds = [], gusts = [], particles = [];
-    let spawnT = 0, wind = 0, windPhase = 0, invuln = 0;
+    let pickups = [], birds = [], gusts = [], particles = [], enemies = [];
+    let spawnT = 0, wind = 0, windPhase = 0, invuln = 0, cutFl = 0; // cutFl = flash de corte
+    // pessoas soltando pipa no cenário (NPCs)
+    let npcs = [];
+    function initNPCs() {
+      npcs = [];
+      const pos = [[W*0.14, W*0.4], [W*0.86, W*0.75], [W*0.3, W*0.6]];
+      const cols = [['#e63946','#f28482'], ['#3a86ff','#4cc9f0'], ['#ffd166','#ff9f1c']];
+      for (let i = 0; i < pos.length; i++) {
+        npcs.push({
+          px: pos[i][0],           // posição da pessoa no chão
+          kx: pos[i][1],           // posição da pipa no céu
+          ky: 60 + i * 40,
+          bob: Math.random()*6,
+          col: cols[i],
+          size: 20 + Math.random()*8
+        });
+      }
+    }
+    initNPCs();
 
     const keys = {};
     addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; e.preventDefault(); });
@@ -137,7 +156,7 @@
     function startGame() {
       document.getElementById('result').classList.add('hidden');
       document.getElementById('overlay').classList.add('hidden');
-      score = 0; lives = 3; time = 0; pickups = []; birds = []; gusts = []; particles = [];
+      score = 0; lives = 3; time = 0; pickups = []; birds = []; gusts = []; particles = []; enemies = [];
       spawnT = 0; wind = 0; invuln = 0;
       kite.x = W*0.5; kite.y = H*0.42; kite.vx = 0; kite.vy = 0;
       document.getElementById('score').textContent = 0;
@@ -145,6 +164,9 @@
       running = true; phase = 'play';
       requestAnimationFrame(loop);
     }
+
+    // entra no jogo direto ao abrir a página
+    window.addEventListener('load', () => startGame());
 
     function gameOver(win) {
       running = false; phase = 'over';
@@ -196,7 +218,7 @@
       const rot = Math.sin(time*0.06)*0.08 + Math.sin(kite.flap*0.02)*0.04;
 
       // sombra no "chão" se estiver baixa
-      const groundProj = H*0.72;
+      const groundProj = GROUND;
       if (y > groundProj - s*2) {
         ctx.fillStyle = 'rgba(0,0,0,' + Math.max(0, 0.25 * ((y - (groundProj - s*2))/40)) + ')';
         ctx.beginPath();
@@ -374,14 +396,97 @@
 
     function drawCloud(lazy) {
       const m = MAPS[mapIdx];
-      ctx.fillStyle = m.cloudCol;
       clouds.forEach(c => {
+        // sombra na base da nuvem
+        ctx.fillStyle = shade(m.cloudCol, -60);
         ctx.beginPath();
-        ctx.arc(c.x, c.y, c.w*0.28, 0, Math.PI*2);
-        ctx.arc(c.x + c.w*0.3, c.y - 8, c.w*0.22, 0, Math.PI*2);
-        ctx.arc(c.x + c.w*0.55, c.y, c.w*0.24, 0, Math.PI*2);
-        ctx.arc(c.x + c.w*0.28, c.y + 6, c.w*0.25, 0, Math.PI*2);
+        ctx.arc(c.x, c.y, c.w*0.30, 0, Math.PI*2);
+        ctx.arc(c.x + c.w*0.32, c.y + 6, c.w*0.24, 0, Math.PI*2);
+        ctx.arc(c.x + c.w*0.58, c.y + 4, c.w*0.25, 0, Math.PI*2);
         ctx.fill();
+        // corpo da nuvem (claro)
+        ctx.fillStyle = m.cloudCol;
+        ctx.beginPath();
+        ctx.arc(c.x - 4, c.y - 6, c.w*0.26, 0, Math.PI*2);
+        ctx.arc(c.x + c.w*0.3 - 2, c.y - 12, c.w*0.20, 0, Math.PI*2);
+        ctx.arc(c.x + c.w*0.55, c.y - 4, c.w*0.22, 0, Math.PI*2);
+        ctx.arc(c.x + c.w*0.28, c.y + 2, c.w*0.26, 0, Math.PI*2);
+        ctx.fill();
+        // brilho superior (luz do sol)
+        ctx.fillStyle = 'rgba(255,255,255,.5)';
+        ctx.beginPath();
+        ctx.arc(c.x, c.y - 9, c.w*0.16, 0, Math.PI*2);
+        ctx.arc(c.x + c.w*0.3, c.y - 15, c.w*0.12, 0, Math.PI*2);
+        ctx.fill();
+      });
+    }
+
+    function drawGrass() {
+      const colors = ['#4a7a2c', '#579336', '#3f6b26'];
+      for (let i = 0; i < 70; i++) {
+        const x = (i * 23 + Math.sin(i*7)*3) % W, grow = Math.sin(time*0.05 + i)*2;
+        const gh = 6 + (i % 5) * 4;
+        ctx.strokeStyle = colors[i % 3];
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(x, GROUND + (i%6));
+        ctx.quadraticCurveTo(x - 3, GROUND - gh*0.5 + grow, x - 5, GROUND - gh + grow);
+        ctx.stroke();
+        if (i % 3 === 0) { // flores brancas
+          ctx.fillStyle = 'rgba(255,255,255,.8)';
+          ctx.beginPath(); ctx.arc(x + 4, GROUND + 8, 2, 0, Math.PI*2); ctx.fill();
+          ctx.fillStyle = '#ffd166';
+          ctx.beginPath(); ctx.arc(x + 4, GROUND + 8, 1, 0, Math.PI*2); ctx.fill();
+        }
+      }
+    }
+
+    function drawBackdrop() {
+      const m = MAPS[mapIdx];
+      ctx.fillStyle = m.themeBackdrop ? m.themeBackdrop : 'rgba(60,100,60,.5)';
+      // árvores distantes
+      for (let i = 0; i < 5; i++) {
+        const x = (i * 78 + 20) % W, ty = GROUND;
+        ctx.fillStyle = 'rgba(40,80,40,.35)';
+        ctx.beginPath();
+        ctx.moveTo(x, ty + 4);
+        ctx.quadraticCurveTo(x - 12, ty - 22, x - 18, ty - 40);
+        ctx.quadraticCurveTo(x, ty - 52, x + 18, ty - 40);
+        ctx.quadraticCurveTo(x + 12, ty - 22, x, ty + 4);
+        ctx.fill();
+      }
+      // linha do horizonte para suavizar transição
+      ctx.fillStyle = 'rgba(50,80,40,.3)';
+      ctx.fillRect(0, GROUND - 2, W, 5);
+    }
+
+    // outras pessoas soltando pipa (cenário)
+    function drawNPCs() {
+      npcs.forEach(n => {
+        // linha da pipa
+        ctx.strokeStyle = 'rgba(220,220,220,.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(n.px, GROUND - 2);
+        ctx.quadraticCurveTo(n.px + Math.sin(time*0.03+n.bob)*8, (GROUND-2+n.ky)/2, n.kx + Math.sin(time*0.02+n.bob)*6, n.ky);
+        ctx.stroke();
+        // pipa pequena
+        const s = n.size;
+        ctx.save();
+        ctx.translate(n.kx + Math.sin(time*0.02+n.bob)*6, n.ky + Math.sin(time*0.03+n.bob)*4);
+        ctx.rotate(0.2);
+        const g = ctx.createLinearGradient(0,-s,0,s);
+        g.addColorStop(0, n.col[0]); g.addColorStop(1, n.col[1]);
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.moveTo(0,-s*0.75); ctx.lineTo(s*0.55,0); ctx.lineTo(0,s*0.75); ctx.lineTo(-s*0.55,0); ctx.closePath(); ctx.fill();
+        ctx.restore();
+        // pessoa pequena
+        ctx.fillStyle = '#2e4a24';
+        ctx.beginPath(); ctx.arc(n.px, GROUND - 4, 3.5, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#e8c9a0';
+        ctx.beginPath(); ctx.arc(n.px, GROUND - 9, 2.5, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#7a4a2b';
+        ctx.fillRect(n.px - 1.5, GROUND - 2, 3, 3);
       });
     }
 
@@ -432,6 +537,55 @@
       ctx.fill();
     }
 
+    // pipa inimiga (de outro "personagem" no topo do céu)
+    function drawEnemy(e) {
+      const c1 = e.col[0], c2 = e.col[1];
+      // linha da pipa inimiga (abc no topo)
+      ctx.strokeStyle = 'rgba(200,200,210,.55)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(e.ax, -8);
+      ctx.quadraticCurveTo(e.ax + Math.sin(time*0.02 + e.o)*2, e.y/2, e.x, e.y);
+      ctx.stroke();
+
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      ctx.rotate(Math.sin(time*0.1 + e.o)*0.1);
+      ctx.shadowColor = 'rgba(0,0,0,.3)'; ctx.shadowBlur = 3; ctx.shadowOffsetY = 2;
+      const g = ctx.createLinearGradient(0,-12,0,12);
+      g.addColorStop(0, c1); g.addColorStop(1, c2);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.moveTo(0,-13); ctx.lineTo(9,0); ctx.lineTo(0,13); ctx.lineTo(-9,0); ctx.closePath(); ctx.fill();
+      ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+      ctx.beginPath(); ctx.moveTo(0,-13); ctx.lineTo(9,0); ctx.lineTo(0,13); ctx.lineTo(-9,0); ctx.closePath(); ctx.strokeStyle='rgba(0,0,0,.2)'; ctx.stroke();
+      ctx.restore();
+    }
+
+    // ponto mais próximo entre o jogador (linha do mão até kite) e a linha inimiga (ax->e)
+    function lineHit() {
+      const A = handPos();
+      for (const e of enemies) {
+        const B = { x: kite.x, y: kite.y };
+        const E1 = { x: e.ax, y: -8 }, E2 = { x: e.x, y: e.y };
+        // amostra a curva do jogador e verifica distância ao segmento E1->E2
+        for (let t2 = 0; t2 <= 1.001; t2 += 0.07) {
+          const px = (1-t2)*(1-t2)*A.x + 2*(1-t2)*t2*e.mx + t2*t2*B.x;
+          const py = (1-t2)*(1-t2)*A.y + 2*(1-t2)*t2*e.my + t2*t2*B.y;
+          const d = segDist(px, py, E1, E2);
+          if (d < 7) return e;
+        }
+      }
+      return null;
+    }
+    function segDist(px, py, A, B) {
+      const dx = B.x - A.x, dy = B.y - A.y;
+      const L2 = dx*dx + dy*dy;
+      let t = L2 ? ((px-A.x)*dx + (py-A.y)*dy) / L2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const x = A.x + t*dx, y = A.y + t*dy;
+      return Math.hypot(px - x, py - y);
+    }
+
     function drawGusts() {
       gusts.forEach(g => {
         ctx.strokeStyle = 'rgba(255,255,255,' + (g.life/30*g.op) + ')';
@@ -454,14 +608,57 @@
       const m = MAPS[mapIdx];
       time++;
 
-      // céu
-      const sky = ctx.createLinearGradient(0, 0, 0, H*0.7);
+      // céu com gradient realista + névoa no horizonte
+      const sky = ctx.createLinearGradient(0, 0, 0, H*0.85);
       sky.addColorStop(0, m.sky[0]);
-      sky.addColorStop(1, m.sky[1]);
+      sky.addColorStop(0.6, m.sky[1]);
+      sky.addColorStop(1, m.sky[0]);
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = '#3a4630';
-      ctx.fillRect(0, H*0.72, W, H*0.28);
+
+      // brilho do sol (overlay radial) para dar profundidade
+      let sunX = W*0.78, sunY = 50, sunCol = '255,220,90';
+      if (m.storm) { sunCol = '230,230,255'; }
+      else if (m.name === 'Tarde') { sunCol = '255,170,60'; }
+      else if (m.name === 'Noite') { sunCol = '200,210,255'; }
+      const sunGlow = ctx.createRadialGradient(sunX, sunY, 5, sunX, sunY, H*0.42);
+      sunGlow.addColorStop(0, 'rgba(' + sunCol + ',.55)');
+      sunGlow.addColorStop(1, 'rgba(' + sunCol + ',0)');
+      ctx.fillStyle = sunGlow;
+      ctx.fillRect(0, 0, W, H*0.8);
+
+      // névoa / perspectiva atmosférica perto do horizonte
+      const hazeY = H*0.7;
+      const haze = ctx.createLinearGradient(0, hazeY - 70, 0, hazeY + 20);
+      haze.addColorStop(0, 'rgba(' + (m.storm?'120,130,160': '220,240,255') + ',0)');
+      haze.addColorStop(1, 'rgba(' + (m.storm?'90,100,130': '200,225,245') + ',.6)');
+      ctx.fillStyle = haze;
+      ctx.fillRect(0, hazeY - 70, W, 90);
+
+      // chão / campo com textura de grama
+      const gg_grad = ctx.createLinearGradient(0, GROUND, 0, H);
+      gg_grad.addColorStop(0, m.themeGrass ? m.themeGrass[0] : '#5d8f3b');
+      gg_grad.addColorStop(1, '#2e4a24');
+      ctx.fillStyle = gg_grad;
+      ctx.fillRect(0, GROUND, W, H - GROUND);
+      // listras do gramado
+      ctx.strokeStyle = 'rgba(60,110,40,.35)';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 18; i++) {
+        const xx = (i * 18 + Math.sin(time*0.01+i)*2);
+        ctx.beginPath();
+        ctx.moveTo(xx, GROUND + 6);
+        ctx.lineTo(xx - 4, H);
+        ctx.stroke();
+      }
+      // tufos de grama
+      drawGrass();
+
+      // árvores/casas no fundo: pequenas silhuetas distantes
+      drawBackdrop();
+
+      // pessoas soltando pipa no cenário
+      drawNPCs();
 
       // estrelas à noite
       if (m.stars) {
@@ -530,9 +727,9 @@
       kite.flap += 0.05;
       // limites
       kite.x = Math.max(14, Math.min(W-14, kite.x));
-      kite.y = Math.max(20, Math.min(H*0.72, kite.y));
+      kite.y = Math.max(20, Math.min(GROUND, kite.y));
       // se a pipa encostar no chão/cabeça do menino => perde vida
-      if (kite.y >= H*0.72 - 4) {
+      if (kite.y >= GROUND - 4) {
         lives--;
         kite.y = H*0.4; kite.vy = 0;
         document.getElementById('lives').textContent = lives;
@@ -598,6 +795,53 @@
         }
       }
       if (invuln > 0) invuln--;
+
+      // pipas inimigas — spawn e corte de linha (linha cortante / cerol)
+      if (enemies.length < 3 && Math.random() < 0.004) {
+        const ex = 40 + Math.random() * (W - 80);
+        const ey = 60 + Math.random() * (H*0.3);
+        enemies.push({
+          x: ex, y: ey,
+          ax: ex,                          // âncora no topo (onde a linha começa)
+          mx: ex + (Math.random()-0.5)*40, // ponto de controle da curva da linha
+          my: ey*0.4,
+          o: Math.random()*6,
+          col: [['#111','#222'],['#d6d6de','#e8e8ef'],['#f4a261','#e76f51']][Math.floor(Math.random()*3)],
+          fall: false, rot: 0
+        });
+      }
+      // atualiza/desenha inimigas
+      for (let i = enemies.length-1; i >= 0; i--) {
+        const e = enemies[i];
+        if (e.fall) {
+          e.y += 5; e.x += Math.sin(e.rot)*2; e.rot += 0.2;
+          if (e.y > H + 40) { enemies.splice(i,1); continue; }
+          drawEnemy(e);
+        } else {
+          // flutua suavemente
+          e.y += Math.sin(time*0.02 + e.o)*0.4;
+          e.x += Math.sin(time*0.03 + e.o)*0.3;
+          drawEnemy(e);
+          // CORTE: se a linha do jogador cruzar a linha inimiga
+          if (invuln === 0 && lineHit()) {
+            e.fall = true;
+            score += 3;
+            cutFl = 12;
+            particles.push({x:e.x,y:e.y,c:'#ff6b6b'});
+            document.getElementById('score').textContent = score;
+          }
+          // colisão com o corpo da pipa inimiga
+          if (invuln === 0 && Math.abs(e.x - kite.x) < 20 && Math.abs(e.y - kite.y) < 18) {
+            e.fall = true;
+            lives--;
+            invuln = 60;
+            particles.push({x:kite.x,y:kite.y,c:'#e63946'});
+            document.getElementById('lives').textContent = lives;
+            if (lives <= 0) { gameOver(false); return; }
+          }
+        }
+      }
+      if (cutFl > 0) cutFl--;
 
       // partículas
       particles.forEach(p => { p.y += 0.5; });

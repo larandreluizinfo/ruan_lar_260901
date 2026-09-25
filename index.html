@@ -13,7 +13,7 @@
       min-height: 100vh; overflow: hidden; color: #fff;
     }
     #game { position: relative; display: flex; flex-direction: column; align-items: center; }
-    canvas { display: block; border-radius: 12px; box-shadow: 0 0 40px rgba(0,0,20,.8); }
+    canvas { display: block; border-radius: 12px; box-shadow: 0 0 40px rgba(0,0,20,.8); height: calc(100vh - 70px); width: auto; max-width: 100vw; }
     #hud {
       width: 100%; display: flex; justify-content: space-between; padding: 8px 6px;
       font-size: 15px; font-weight: 700; letter-spacing: 1px; text-shadow: 0 1px 3px rgba(0,0,0,.6);
@@ -66,7 +66,7 @@
       </div>
     </div>
     <div id="mapHint" class="hidden">🗺️</div>
-    <canvas id="cv" width="360" height="640"></canvas>
+    <canvas id="cv" width="720" height="1280"></canvas>
     <div id="overlay">
       <h1>🪁 Voa Pipa!</h1>
       <div class="sub">Solte sua pipa no céu, pegue estrelas e nuvens mágicas! Desvie dos pássaros e do vento forte.</div>
@@ -88,7 +88,9 @@
   <script>
     const cv = document.getElementById('cv');
     const ctx = cv.getContext('2d');
-    const W = cv.width, H = cv.height;
+    const W = 360, H = 640;
+    const UI_Scale = 2;              // canvas físico 720x1280 -> lógico 360x640
+    ctx.scale(UI_Scale, UI_Scale);
 
     const KITES = [
       { name: 'Pipa',      tipo: 'losango', top: '#e63946', bot: '#f28482', tail: '#e63946', cost: 0,  emoji: '🪁' },
@@ -808,8 +810,12 @@
       if (keys['arrowup'] || keys['w']) ay -= 0.10;
       if (keys['arrowdown'] || keys['s']) ay += 0.10;
       if (touch) {
-        const dx = touch.clientX - cv.getBoundingClientRect().left - kite.x;
-        const dy = touch.clientY - cv.getBoundingClientRect().top - kite.y;
+        const rect = cv.getBoundingClientRect();
+        const s = W / rect.width; // converte px da tela -> espaço lógico 360
+        const lx = (touch.clientX - rect.left) * s;
+        const ly = (touch.clientY - rect.top) * s;
+        const dx = lx - kite.x;
+        const dy = ly - kite.y;
         ax += Math.max(-1, Math.min(1, dx/90)) * 0.14;
         ay += Math.max(-1, Math.min(1, dy/90)) * 0.14;
       }

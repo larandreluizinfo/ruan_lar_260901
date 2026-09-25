@@ -48,7 +48,7 @@
   <div id="game">
     <div id="hud">
       <div>Pipas: <span id="lives">3</span> · Pontos: <span id="score">0</span></div>
-      <div>Recorde: <span id="best">0</span></div>
+      <div>🪙 <span id="coins">0</span> · Recorde: <span id="best">0</span></div>
     </div>
     <canvas id="cv" width="360" height="640"></canvas>
     <div id="overlay">
@@ -57,6 +57,9 @@
 
       <div class="secLabel">🎨 Cor da pipa</div>
       <div class="row" id="kiteRow"></div>
+
+      <div class="secLabel">🛍️ Loja de Pipa 🪙 <span id="shopCoins">0</span></div>
+      <div class="row" id="shopRow"></div>
 
       <div class="secLabel">🗺️ Escolha o mapa (céu)</div>
       <div class="row" id="mapRow"></div>
@@ -72,13 +75,26 @@
     const W = cv.width, H = cv.height;
 
     const KITES = [
-      { name: 'Pipa',      tipo: 'losango', top: '#e63946', bot: '#f28482', tail: '#e63946' },
-      { name: 'Papagaio',  tipo: 'papagaio', top: '#ffd166', bot: '#ff9f1c', tail: '#ff9f1c' },
-      { name: 'Tesoura',   tipo: 'tesoura', top: '#3a86ff', bot: '#4cc9f0', tail: '#3a86ff' },
-      { name: 'Arraia',    tipo: 'arraia', top: '#2d6a4f', bot: '#74c69d', tail: '#2d6a4f' },
-      { name: 'Estrela',   tipo: 'estrela', top: '#8338ec', bot: '#b388ff', tail: '#8338ec' },
-      { name: 'Quadrada',  tipo: 'quadrada', top: '#f56040', bot: '#f9a26c', tail: '#f56040' }
+      { name: 'Pipa',      tipo: 'losango', top: '#e63946', bot: '#f28482', tail: '#e63946', cost: 0,  emoji: '🪁' },
+      { name: 'Papagaio',  tipo: 'papagaio', top: '#ffd166', bot: '#ff9f1c', tail: '#ff9f1c', cost: 30, emoji: '🦜' },
+      { name: 'Tesoura',   tipo: 'tesoura', top: '#3a86ff', bot: '#4cc9f0', tail: '#3a86ff', cost: 60, emoji: '✂️' },
+      { name: 'Arraia',    tipo: 'arraia', top: '#2d6a4f', bot: '#74c69d', tail: '#2d6a4f', cost: 90, emoji: '🦂' },
+      { name: 'Estrela',   tipo: 'estrela', top: '#8338ec', bot: '#b388ff', tail: '#8338ec', cost: 130, emoji: '⭐' },
+      { name: 'Quadrada',  tipo: 'quadrada', top: '#f56040', bot: '#f9a26c', tail: '#f56040', cost: 180, emoji: '⬛' }
     ];
+
+    // dinheiro e pipas desbloqueadas (persistem no navegador)
+    let coins = (parseInt(localStorage.getItem('pipaCoins'))|0);
+    let unlocked = (() => {
+      try { const u = JSON.parse(localStorage.getItem('pipaUnlocked') || '{"0":true}'); const o = {}; o[0]=true; KITES.forEach((_,i)=>{ if(u[i]) o[i]=true; }); return o; }
+      catch(e){ return {0:true}; }
+    })();
+    function saveMoney() {
+      localStorage.setItem('pipaCoins', coins);
+      localStorage.setItem('pipaUnlocked', JSON.stringify(unlocked));
+      const c = document.getElementById('coins'); if (c) c.textContent = coins;
+      const s = document.getElementById('shopCoins'); if (s) s.textContent = coins;
+    }
 
     const MAPS = [
       { name: 'Dia',      sky: ['#6ec6ff','#c8f0ff'], clouds:['#fff','#f0f8ff'], birds: 0.5, gust: 0.018, cloudCol:'rgba(255,255,255,.9)' },
@@ -102,16 +118,42 @@
       const kr = document.getElementById('kiteRow');
       kr.innerHTML = '';
       KITES.forEach((k, i) => {
-        kr.innerHTML += '<div class="pick' + (i===kiteIdx?' sel':'') + '" onclick="selectKite('+i+')">🪁 ' + k.name + '</div>';
+        const have = unlocked[i];
+        kr.innerHTML += '<div class="pick' + (i===kiteIdx?' sel':'') + '" onclick="selectKite('+i+')">' +
+          k.emoji + ' ' + k.name + (have ? '' : ' 🔒') + '</div>';
       });
+      buildShop();
       const mr = document.getElementById('mapRow');
       mr.innerHTML = '';
       MAPS.forEach((m, i) => {
         mr.innerHTML += '<div class="pick' + (i===mapIdx?' sel':'') + '" onclick="selectMap('+i+')">' + (i===0?'☀️':i===1?'🌇':i===2?'🌙':'⛈️') + ' ' + m.name + '</div>';
       });
+      saveMoney();
     }
-    function selectKite(i) { kiteIdx = i; buildMenu(); }
+    function buildShop() {
+      const sr = document.getElementById('shopRow');
+      sr.innerHTML = '';
+      KITES.forEach((k, i) => {
+        const have = unlocked[i];
+        sr.innerHTML += '<div class="pick' + (i===kiteIdx?' sel':'') + '" onclick="' + (have ? 'selectKite('+i+')' : 'buyKite('+i+')') + '">' +
+          k.emoji + ' ' + k.name + (have ? ' <small style="color:#4ecdc4">✓</small>' : ' <small>🪙' + k.cost + '</small>') + '</div>';
+      });
+    }
+    function selectKite(i) {
+      if (!unlocked[i]) { buyKite(i); return; }
+      kiteIdx = i; buildMenu();
+    }
     function selectMap(i) { mapIdx = i; buildMenu(); }
+    function buyKite(i) {
+      const k = KITES[i];
+      if (unlocked[i]) { selectKite(i); return; }
+      if (coins < k.cost) return;
+      coins -= k.cost;
+      unlocked[i] = true;
+      kiteIdx = i;
+      saveMoney();
+      buildMenu();
+    }
     buildMenu();
 
     // ---------- estado do jogo ----------
@@ -161,8 +203,17 @@
       kite.x = W*0.5; kite.y = H*0.42; kite.vx = 0; kite.vy = 0;
       document.getElementById('score').textContent = 0;
       document.getElementById('lives').textContent = 3;
+      saveMoney();
       running = true; phase = 'play';
       requestAnimationFrame(loop);
+    }
+
+    // soma pontos e ganha moedas (1 ponto = 1 moeda)
+    function addScore(n) {
+      score += n;
+      coins += n;
+      document.getElementById('score').textContent = score;
+      saveMoney();
     }
 
     // entra no jogo direto ao abrir a página
@@ -174,7 +225,9 @@
       const r = document.getElementById('result');
       r.classList.remove('hidden');
       r.innerHTML = (win ? '🏆 Olha sua pipa no céu!' : '😅 A pipa caiu...') +
-        '<br>Pontos: <b>' + score + '</b> · Recorde: <b>' + best + '</b>';
+        '<br>Pontos: <b>' + score + '</b> · Recorde: <b>' + best + '</b>' +
+        '<br>🪙 Moedas para a loja: <b>' + coins + '</b>';
+      saveMoney();
       document.getElementById('overlay').classList.remove('hidden');
     }
 
@@ -627,6 +680,30 @@
       ctx.fillStyle = sunGlow;
       ctx.fillRect(0, 0, W, H*0.8);
 
+      // raios suaves do sol girando devagar
+      if (m.gust >= 0) {
+        ctx.save();
+        ctx.translate(sunX, sunY);
+        ctx.rotate(time*0.004);
+        for (let i = 0; i < 8; i++) {
+          ctx.rotate(Math.PI/4);
+          ctx.fillStyle = 'rgba(' + sunCol + ',' + (m.storm ? 0.05 : 0.10) + ')';
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(150, -12);
+          ctx.lineTo(170, 0);
+          ctx.lineTo(150, 12);
+          ctx.closePath();
+          ctx.fill();
+        }
+        // halo brilhante ao redor do sol
+        ctx.fillStyle = 'rgba(' + sunCol + ',.30)';
+        ctx.beginPath(); ctx.arc(0, 0, 34, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = 'rgba(' + sunCol + ',.45)';
+        ctx.beginPath(); ctx.arc(0, 0, 22, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+
       // névoa / perspectiva atmosférica perto do horizonte
       const hazeY = H*0.7;
       const haze = ctx.createLinearGradient(0, hazeY - 70, 0, hazeY + 20);
@@ -757,8 +834,8 @@
         p.y += p.vy;
         if (p.y > H) { pickups.splice(i,1); continue; }
         if (Math.abs(p.x - kite.x) < 16 && Math.abs(p.y - kite.y) < 16) {
-          if (p.type === 'star') { score++; particles.push({x:p.x,y:p.y,c:'#ffd166'}); }
-          else { score += 5; particles.push({x:p.x,y:p.y,c:'#ff78c9'}); }
+          if (p.type === 'star') { addScore(1); particles.push({x:p.x,y:p.y,c:'#ffd166'}); }
+          else { addScore(5); particles.push({x:p.x,y:p.y,c:'#ff78c9'}); }
           document.getElementById('score').textContent = score;
           pickups.splice(i,1);
           continue;
@@ -825,7 +902,7 @@
           // CORTE: se a linha do jogador cruzar a linha inimiga
           if (invuln === 0 && lineHit()) {
             e.fall = true;
-            score += 3;
+            addScore(3);
             cutFl = 12;
             particles.push({x:e.x,y:e.y,c:'#ff6b6b'});
             document.getElementById('score').textContent = score;
